@@ -27,6 +27,7 @@ package br.net.fabiozumbi12.UltimateChat.Bukkit.discord;
 
 import br.net.fabiozumbi12.UltimateChat.Bukkit.UCChannel;
 import br.net.fabiozumbi12.UltimateChat.Bukkit.UChat;
+import br.net.fabiozumbi12.UltimateChat.Bukkit.hooks.UCVaultCache;
 import br.net.fabiozumbi12.UltimateChat.Bukkit.util.UCPerms;
 import br.net.fabiozumbi12.UltimateChat.Bukkit.util.UCUtil;
 import br.net.fabiozumbi12.UltimateChat.Bukkit.util.UChatColor;
@@ -45,6 +46,7 @@ import net.sacredlabyrinth.phaed.simpleclans.managers.SettingsManager;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
 
 import javax.security.auth.login.LoginException;
 import java.net.MalformedURLException;
@@ -359,10 +361,10 @@ public class UCDiscord extends ListenerAdapter implements UCDInterface {
 
         if (ch != null) {
             //format prefixes tags
-            String formated = formatTags(ch.getDiscordtoMCFormat(), ch, e, "", "");
+            String formated = formatTags(ch.getDiscordtoMCFormat(), ch, e, "", "", null);
 
             //add dd channel name to hover
-            String hovered = formatTags(ch.getDiscordHover(), ch, e, "", "");
+            String hovered = formatTags(ch.getDiscordHover(), ch, e, "", "", null);
             fancy.text(formated);
             if (!hovered.isEmpty()) {
                 fancy.hoverShowText(hovered);
@@ -455,7 +457,7 @@ public class UCDiscord extends ListenerAdapter implements UCDInterface {
                 text = text.replace("@everyone", "everyone")
                         .replace("@here", "here");
             }
-            text = formatTags(ch.getMCtoDiscordFormat(), ch, null, sender.getName(), text);
+            text = formatTags(ch.getMCtoDiscordFormat(), ch, null, sender.getName(), text, sender);
             for (String ddid : ch.getDiscordChannelID()) {
                 sendToChannel(ddid, text);
             }
@@ -508,7 +510,7 @@ public class UCDiscord extends ListenerAdapter implements UCDInterface {
         }
     }
 
-    private String formatTags(String format, UCChannel ch, MessageReceivedEvent e, String sender, String message) {
+    private String formatTags(String format, UCChannel ch, MessageReceivedEvent e, String sender, String message, CommandSender senderObj) {
         format = format.replace("{ch-color}", ch.getColor())
                 .replace("{ch-alias}", ch.getAlias())
                 .replace("{ch-name}", ch.getName());
@@ -531,6 +533,46 @@ public class UCDiscord extends ListenerAdapter implements UCDInterface {
                 format = format.replace("{nickname}", UChatColor.stripColor(UChatColor.translateAlternateColorCodes(e.getMember().getNickname())));
             } else {
                 format = format.replace("{nickname}", sender);
+            }
+        }
+        if (senderObj instanceof Player) {
+            Player player = (Player) senderObj;
+            if (UChat.get().getHooks().getVaultChat() != null && (format.contains("-prefix") || format.contains("-suffix"))) {
+                try{
+                    format = UChatColor.stripColor(format.replace("{group-all-prefixes}", UCVaultCache.getVaultChat(player).getPlayerPrefixes())
+                            .replace("{group-all-suffixes}", UCVaultCache.getVaultChat(player).getPlayerSuffixes()));
+
+                    format = UChatColor.stripColor(format
+                            .replace("{group-suffix}", UCVaultCache.getVaultChat(player).getPlayerSuffix())
+                            .replace("{group-prefix}", UCVaultCache.getVaultChat(player).getPlayerPrefix()));
+                    String[] pgs = UCVaultCache.getVaultPerms(player).getPlayerGroups();
+                    if (pgs.length > 0) {
+                        format = UChatColor.stripColor(format
+                                .replace("{player-groups-prefixes}", UCVaultCache.getVaultChat(player).getGroupPrefixes())
+                                .replace("{player-groups-suffixes}", UCVaultCache.getVaultChat(player).getGroupSuffixes()));
+                    }
+                } catch (Exception exception){
+                    UChat.get().getUCLogger().warning("It seems VaultChat can't get the suffix/prefix for some reason. Check the server logs when starting or reloading UChat.");
+                }
+            }
+            if (UChat.get().getHooks().getVaultEco() != null && format.contains("{balance}")) {
+                format = format
+                        .replace("{balance}", "" + UChat.get().getHooks().getVaultEco().getBalance(player, player.getWorld().getName()));
+            }
+            if (UChat.get().getHooks().getVaultPerms() != null && (format.contains("-group}") || format.contains("-groups}"))) {
+                String[] pgs = UCVaultCache.getVaultPerms(player).getPlayerGroups();
+                if (pgs.length > 0) {
+                    StringBuilder groups = new StringBuilder();
+                    for (String g : pgs) {
+                        groups.append(g).append(",");
+                    }
+                    format = UChatColor.stripColor(format.replace("{player-groups}", groups.substring(0, groups.length() - 1)));
+
+                }
+                String primGroup = UCVaultCache.getVaultPerms(player).getPrimaryGroup();
+                String group = UChat.get().getUCConfig().getString("general.group-names." + primGroup);
+                format = UChatColor.stripColor(format.replace("{prim-group}", group.isEmpty() ? primGroup : group));
+
             }
         }
         //if not filtered
